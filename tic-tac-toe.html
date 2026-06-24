@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tic Tac Toe - Multiplayer</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; background: #1a1a2e; font-family: 'Segoe UI', sans-serif; color: #eee; }
+  h1 { margin-bottom: 10px; font-size: 2.5rem; letter-spacing: 2px; }
+  #lobby { text-align: center; }
+  #lobby input { padding: 10px 16px; font-size: 1.1rem; border-radius: 8px; border: 2px solid #0f3460; background: #16213e; color: #eee; width: 200px; }
+  #lobby button { padding: 10px 24px; font-size: 1.1rem; background: #e94560; color: #fff; border: none; border-radius: 8px; cursor: pointer; margin-left: 8px; }
+  #lobby button:hover { background: #c73652; }
+  #game { display: none; text-align: center; }
+  #info { margin-bottom: 5px; font-size: 1rem; opacity: 0.7; }
+  #mark-display { font-size: 1.4rem; margin-bottom: 10px; }
+  #status { margin-bottom: 15px; font-size: 1.3rem; height: 30px; }
+  .board { display: grid; grid-template-columns: repeat(3, 100px); grid-template-rows: repeat(3, 100px); gap: 6px; margin: 0 auto; }
+  .cell { width: 100px; height: 100px; background: #16213e; border: 2px solid #0f3460; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 2.8rem; font-weight: bold; cursor: pointer; transition: background 0.2s, transform 0.1s; user-select: none; }
+  .cell:hover:not(.taken) { background: #1a2744; transform: scale(1.05); }
+  .cell.taken { cursor: default; }
+  .cell.x { color: #e94560; }
+  .cell.o { color: #00d2ff; }
+  .cell.win { background: #0f3460; box-shadow: 0 0 15px rgba(0,210,255,0.5); }
+  #restart { margin-top: 20px; padding: 12px 30px; font-size: 1rem; background: #e94560; color: #fff; border: none; border-radius: 8px; cursor: pointer; }
+  #restart:hover { background: #c73652; }
+  #msg { margin-top: 10px; font-size: 1rem; color: #ff6b6b; min-height: 20px; }
+</style>
+</head>
+<body>
+<h1>TIC TAC TOE</h1>
+<div id="lobby">
+  <div style="margin-bottom:15px; font-size:1.1rem; opacity:0.8;">Enter a room code to join the same game:</div>
+  <input id="room" placeholder="Room code" value="default">
+  <button onclick="joinGame()">Join</button>
+</div>
+<div id="game">
+  <div id="info"></div>
+  <div id="mark-display"></div>
+  <div id="status">Waiting for opponent...</div>
+  <div class="board" id="board"></div>
+  <button id="restart" onclick="restartGame()">Restart</button>
+  <div id="msg"></div>
+</div>
+<script>
+let ws, myMark, myTurn = false;
+const boardEl = document.getElementById('board');
+
+function joinGame() {
+  const room = document.getElementById('room').value.trim() || 'default';
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(`${proto}//${location.host}/ws`);
+  ws.onopen = () => ws.send(JSON.stringify({ type: 'join', game: room }));
+  ws.onmessage = (e) => handle(JSON.parse(e.data));
+  ws.onerror = () => { document.getElementById('msg').textContent = 'Connection failed.'; };
+}
+
+function handle(msg) {
+  switch (msg.type) {
+    case 'joined':
+      myMark = msg.mark;
+      document.getElementById('lobby').style.display = 'none';
+      document.getElementById('game').style.display = 'block';
+      document.getElementById('info').textContent = `Room: ${document.getElementById('room').value.trim() || 'default'}`;
+      document.getElementById('mark-display').innerHTML = `You are <span class="${myMark.toLowerCase()}">${myMark}</span>`;
+      render(msg.board);
+      break;
+    case 'start':
+      myTurn = msg.turn;
+      document.getElementById('status').textContent = myTurn ? 'Your turn!' : 'Opponent\'s turn';
+      break;
+    case 'update':
+      render(msg.board);
+      myTurn = msg.turn;
+      document.getElementById('status').textContent = myTurn ? 'Your turn!' : 'Opponent\'s turn';
+      document.getElementById('msg').textContent = '';
+      break;
+    case 'result':
+      render(msg.board);
+      myTurn = false;
+      if (msg.winner === 'draw') {
+        document.getElementById('status').textContent = "It's a draw!";
+      } else {
+        const won = msg.winner === myMark;
+        document.getElementById('status').textContent = won ? 'You win!' : 'You lose!';
+        if (msg.line) msg.line.forEach(i => boardEl.children[i].classList.add('win'));
+      }
+      break;
+    case 'opponent_left':
+      document.getElementById('status').textContent = 'Opponent left.';
+      myTurn = false;
+      break;
+    case 'error':
+      document.getElementById('msg').textContent = msg.msg;
+      break;
+  }
+}
+
+function render(board) {
+  boardEl.innerHTML = '';
+  for (let i = 0; i < 9; i++) {
+    const c = document.createElement('div');
+    c.classList.add('cell');
+    if (board[i]) {
+      c.textContent = board[i];
+      c.classList.add(board[i].toLowerCase(), 'taken');
+    } else {
+      c.addEventListener('click', () => sendMove(i));
+    }
+    boardEl.appendChild(c);
+  }
+}
+
+function sendMove(i) {
+  if (!myTurn) return;
+  ws.send(JSON.stringify({ type: 'move', cell: i, mark: myMark }));
+  myTurn = false;
+}
+
+function restartGame() {
+  if (ws && ws.readyState === 1) {
+    ws.send(JSON.stringify({ type: 'restart' }));
+    document.getElementById('msg').textContent = '';
+  }
+}
+
+document.getElementById('room').addEventListener('keypress', (e) => {
+  if (e.key === 'Enter') joinGame();
+});
+</script>
+</body>
+</html>
