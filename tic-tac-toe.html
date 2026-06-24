@@ -31,9 +31,10 @@
 <body>
 <h1>TIC TAC TOE</h1>
 <div id="lobby">
-  <div style="margin-bottom:15px; font-size:1.1rem; opacity:0.8;">Enter a room code to join the same game:</div>
+  <div style="margin-bottom:15px; font-size:1.1rem; opacity:0.8;">Enter a room code to play with your friend:</div>
   <input id="room" placeholder="Room code" value="default">
   <button onclick="joinGame()">Join</button>
+  <div id="msg" style="margin-top:10px"></div>
 </div>
 <div id="game">
   <div id="info"></div>
@@ -41,7 +42,6 @@
   <div id="status">Waiting for opponent...</div>
   <div class="board" id="board"></div>
   <button id="restart" onclick="restartGame()">Restart</button>
-  <div id="msg"></div>
 </div>
 <script>
 let ws, myMark, myTurn = false;
@@ -51,6 +51,7 @@ function joinGame() {
   const room = document.getElementById('room').value.trim() || 'default';
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   ws = new WebSocket(`${proto}//${location.host}/ws`);
+  document.getElementById('msg').textContent = 'Connecting...';
   ws.onopen = () => ws.send(JSON.stringify({ type: 'join', game: room }));
   ws.onmessage = (e) => handle(JSON.parse(e.data));
   ws.onerror = () => { document.getElementById('msg').textContent = 'Connection failed.'; };
